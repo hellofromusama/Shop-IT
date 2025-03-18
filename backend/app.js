@@ -1,40 +1,53 @@
 const express = require('express');
-const app = express();
+const cors = require('cors');
 const cookieParser = require('cookie-parser');
-const bodyparser = require('body-parser');
-const fileUpload = require('express-fileupload');
-const dotenv = require('dotenv');
+const compression = require('compression');
+const morgan = require('morgan');
+const path = require('path');
+const securityMiddleware = require('./middlewares/security');
+const errorHandler = require('./middlewares/errorHandler');
 
+const app = express();
 
-const errorMiddleware = require('./middlewares/errors');
+// Security middleware
+securityMiddleware(app);
 
-//  setting up config file
-dotenv.config({ path: 'backend/config/config.env' });
-
-
-app.use(express.json());
-app.use(bodyparser.urlencoded({ extended: true }));
+// Body parser middleware
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(cookieParser());
-app.use(fileUpload());
 
+// CORS configuration
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? process.env.FRONTEND_URL 
+    : 'http://localhost:3000',
+  credentials: true
+}));
 
+// Compression middleware
+app.use(compression());
 
+// Logging middleware
+if (process.env.NODE_ENV === 'development') {
+  app.use(morgan('dev'));
+}
 
+// Routes
+app.use('/api/v1/products', require('./routes/productRoutes'));
+app.use('/api/v1/users', require('./routes/userRoutes'));
+app.use('/api/v1/orders', require('./routes/orderRoutes'));
+app.use('/api/v1/reviews', require('./routes/reviewRoutes'));
 
+// Serve static files in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../frontend/build')));
+  app.get('*', (req, res) => {
+    res.sendFile(path.resolve(__dirname, '../frontend/build/index.html'));
+  });
+}
 
-//  Import all routes
-const products = require('./routes/product');
-const auth = require('./routes/auth');
-const order = require('./routes/order');
-const payment = require('./routes/payment');
-
-app.use('/api/v1', products);
-app.use('/api/v1', auth);
-app.use('/api/v1', order);
-app.use('/api/v1', payment);
-
-//  Middleware to handle errors
-app.use(errorMiddleware);
-
+// Error handling middleware
+app.use(errorHandler);
 
 module.exports = app;
